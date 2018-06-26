@@ -1,5 +1,5 @@
 """
-    Evaluation module for point-wise algorithms in terms of mean average precision.
+    Evaluation module for point-wise and interval-wise prediction algorithms in terms of mean average precision.
 """
 import numpy as np
 
@@ -131,8 +131,9 @@ def average_precision(y_true, y_scores, iou_threshold):
     return np.mean(precision_interp)
 
 
-def mean_average_precision(y_true, y_scores):
+def map_pointwise_predictions(y_true, y_scores):
     """
+    Calculates mean average precision for point wise predictions.
     Mean Average Precision score is calculated by taking the mean of average precision over all IoU (intersection over union) thresholds.      
     Averaging over multiple IoU thresholds rather than only considering one generous threshold of IoU tends to reward models that are          
     better at precise localization.
@@ -147,3 +148,61 @@ def mean_average_precision(y_true, y_scores):
         mean += average_precision(y_true, y_scores, iou_threshold)
 
     return mean/len(thresholds)
+
+def map_intervalwise_predictions(labels, anomalies):
+    """
+    Calculates mean average precision for interval wise predictions.
+    Mean Average Precision score is calculated by taking the mean of average precision over all IoU (intersection over union) thresholds.      
+    Averaging over multiple IoU thresholds rather than only considering one generous threshold of IoU tends to reward models that are          
+    better at precise localization.
+
+    :param anomalies (type: list): list with interval (start, end) and anomaly score, [start, end, anomaly_score]
+    :param labels (type: list): input labels 1/0 for each point
+    :param lag (type: int): lag time
+    :return (type: float): mean average precision score over given intersection over union (IoU) thresholds 
+    """
+    
+    #intersection over union thresholds for mean average precision calculation 
+    anomalies.sort(key=lambda item: item[2], reverse=True)  # sort the anomalies by their scores in descending order
+    labeled_data = label_anomaly_windows(labels)
+    iou, anomaly_region = calculate_IOU(anomalies, labeled_data)
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25]
+    mean = 0
+
+    for iou_threshold in thresholds:
+        precision = []
+        recall = []
+
+        for i in range(1, len(iou)):
+            #selecting top i anomaly scores and predicting them as positive label, because the anomalies are ordered by their scores
+            iou_i = iou[:i]
+            region = []
+            tp, fp, fn = 0,0,0
+            for j in range(len(iou_i)):
+                if iou_i[j] > iou_threshold:
+                    tp += 1
+                    for window in anomaly_region[j]:
+                        if window not in region:
+                            region.append(window)
+            fp = len(iou_i) - tp
+                    
+            precision.append(float(tp)/ (tp + fp))
+            recall.append(len(region)/ len(labeled_data))
+        
+        #Recall values for calculating average precision
+        recall_interp = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        recall_interp = recall_interp[::-1]
+        recall = recall[::-1]
+        precision = precision[::-1]
+        precision_interp = []
+        for val in recall_interp:
+            k = 0
+            p = 0
+            while k < len(recall) and recall[k] >= val :
+                p = precision[k] if precision[k] >= p else p
+                k += 1
+                
+            precision_interp.append(p)
+        mean += np.mean(precision_interp)
+
+    return float(mean)/ len(thresholds)
