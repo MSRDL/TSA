@@ -133,7 +133,7 @@ def average_precision(y_true, y_scores, iou_threshold):
 
 def map_pointwise_predictions(y_true, y_scores):
     """
-    Calculates mean average precision for point wise predictions.
+    Computes mean average precision for point wise predictions.
     Mean Average Precision score is calculated by taking the mean of average precision over all IoU (intersection over union) thresholds.      
     Averaging over multiple IoU thresholds rather than only considering one generous threshold of IoU tends to reward models that are          
     better at precise localization.
@@ -151,7 +151,7 @@ def map_pointwise_predictions(y_true, y_scores):
 
 def map_intervalwise_predictions(labels, anomalies):
     """
-    Calculates mean average precision for interval wise predictions.
+    Computes mean average precision for interval wise predictions.
     Mean Average Precision score is calculated by taking the mean of average precision over all IoU (intersection over union) thresholds.      
     Averaging over multiple IoU thresholds rather than only considering one generous threshold of IoU tends to reward models that are          
     better at precise localization.
@@ -173,7 +173,7 @@ def map_intervalwise_predictions(labels, anomalies):
         precision = []
         recall = []
 
-        for i in range(1, len(iou)):
+        for i in range(1, len(iou)+1):
             #selecting top i anomaly scores and predicting them as positive label, because the anomalies are ordered by their scores
             iou_i = iou[:i]
             region = []
