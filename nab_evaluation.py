@@ -43,16 +43,14 @@ def getCorrespondingWindow(index, windows):
     """
     
     for i, window in enumerate(windows):
-        if index <= window[1] and index >= window[0]:
-            return window
-        elif index > window[1] and index < windows[i+1][0]:
+        if window[0] <= index and (i == len(windows)-1 or index < windows[i+1][0]):
             return window
 
 
-def add_buffer_to_label(sparsity, label_windows, min_label, max_label, window_scale_limit=2, goal_sparsity=0.01):
+def add_buffer_to_label(sparsity, label_windows, min_label, max_label, window_scale_limit=2, max_sparsity=0.01):
     """
     Add buffers to windows to produce the desired anomaly sparsity. If the current sparsity is greater 
-    than the goal_sparsity, then this function does not do anything. This will not expand windows beyond
+    than the max_sparsity, then this function does not do anything. This will not expand windows beyond
     window_scale_limit * (current window size). Merge any overlapping windows. 
     
     @param sparsity (float): The current sparsity (total length of label windows)/(length of timeseries)
@@ -62,13 +60,13 @@ def add_buffer_to_label(sparsity, label_windows, min_label, max_label, window_sc
     @param window_scale_limit (float): The largest amount the windows to be expanded by. For example, for 
                                        window_scale_limit=2, the new windows will be at most 
                                        2 * (current window size). 
-    @param goal_sparsity (int): The goal sparsity of the window after increasing the window size. 
+    @param max_sparsity (int): The max sparsity of the window after increasing the window size. 
     """
     if sparsity == 0:  
         return label_windows
 
     new_windows = []
-    expand_amount = min(goal_sparsity/sparsity, window_scale_limit) - 1
+    expand_amount = min(max_sparsity/sparsity, window_scale_limit) - 1
     
     if expand_amount > 0:
         for i in range(len(label_windows)):
@@ -117,26 +115,30 @@ def nab_score(y_true, y_pred):
     tp_score = 0
     fp_score = 0
     fn_score = 0
-    for i in range(len(y_pred)):
-        if y_pred[i] == 1:
+    for t in range(len(y_pred)):
+        if y_pred[t] == 1:
             #if index comes before the first window or after last window
-            if i < label_windows[0][0]:
+            if t < label_windows[0][0]:
                 fp_score += -1.0*fp_weight
-            elif i > label_windows[-1][1]:
-                position = abs(label_windows[-1][1]-i)/float(label_windows[-1][1]-label_windows[-1][0])
+            elif t > label_windows[-1][1]:
+                position = abs(label_windows[-1][1]-t)/float(label_windows[-1][1]-label_windows[-1][0])
                 fp_score += scaledSigmoid(position)*fp_weight
                 
+                
             else:
-                cWindow = getCorrespondingWindow(i, label_windows)
-                if i <= cWindow[1] and i >= cWindow[0] and detection_info[cWindow] == 0:
+                #get the corresponding window
+                cWindow = getCorrespondingWindow(t, label_windows)
+                #if t is the point inside the window, then increase the tp_score else ignore
+                if t <= cWindow[1] and t >= cWindow[0] and detection_info[cWindow] == 0:
                     detection_info[cWindow] = 1
-                    position = -(cWindow[1]-i)/float(cWindow[1]-cWindow[0])
+                    position = -(cWindow[1]-t+1)/float(cWindow[1]-cWindow[0]+1)
                     #normalization so that scaledSigmoid(-1.0) = 1 
                     tp_score += scaledSigmoid(position)*tp_weight/scaledSigmoid(-1.0)
-                elif detection_info[cWindow] == 0:
-                    position = abs(cWindow[1] - i)/float(cWindow[1]-cWindow[0])
+                #if t lies outside of the window
+                elif t > cWindow[1]:
+                    position = abs(cWindow[1] - t)/float(cWindow[1]-cWindow[0])
                     fp_score += scaledSigmoid(position)*fp_weight
-                    
+        
     for key in detection_info:
         if detection_info[key] == 0:
             fn_score += -fn_weight
