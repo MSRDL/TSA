@@ -47,7 +47,48 @@ def getCorrespondingWindow(index, windows):
             return window
         elif index > window[1] and index < windows[i+1][0]:
             return window
-        
+
+
+def add_buffer_to_label(sparsity, label_windows, min_label, max_label, window_scale_limit=2, goal_sparsity=0.01):
+    """
+    Add buffers to windows to produce the desired anomaly sparsity. If the current sparsity is greater 
+    than the goal_sparsity, then this function does not do anything. This will not expand windows beyond
+    window_scale_limit * (current window size). Merge any overlapping windows. 
+    
+    @param sparsity (float): The current sparsity (total length of label windows)/(length of timeseries)
+    @param label_windows (list): List of (start, end) indices. Should be sorted by start index. 
+    @param min_label (int): Don't allow windows to expand before this index
+    @param max_label (int): Don't allow windows to expand after this index
+    @param window_scale_limit (float): The largest amount the windows to be expanded by. For example, for 
+                                       window_scale_limit=2, the new windows will be at most 
+                                       2 * (current window size). 
+    @param goal_sparsity (int): The goal sparsity of the window after increasing the window size. 
+    """
+    if sparsity == 0:  
+        return label_windows
+
+    new_windows = []
+    expand_amount = min(goal_sparsity/sparsity, window_scale_limit) - 1
+    
+    if expand_amount > 0:
+        for i in range(len(label_windows)):
+            start = label_windows[i][0]
+            end = label_windows[i][1]
+            buff_amount = math.ceil(expand_amount/2 * (end - start+1))
+            new_start = max(min_label, start - buff_amount)
+            new_end = min(max_label, end + buff_amount)
+
+            # Merge overlapping windows. Overlapping windows do not happen frequently and 
+            # usually only overlap with adjacent window. 
+            while len(new_windows) > 0 and new_windows[-1][1] >= new_start-1:
+                new_start = min(new_windows[-1][0], new_start)
+                new_end = max(new_windows[-1][1], new_end)
+                del new_windows[-1]
+            new_windows.append((new_start, new_end))
+    else:
+        new_windows = label_windows
+    return new_windows
+
 
 def nab_score(y_true, y_pred):
     """
@@ -66,6 +107,10 @@ def nab_score(y_true, y_pred):
     #weights for the standard profile 
     tp_weight, fp_weight, fn_weight = 1.0, 0.11, 1.0
     label_windows = label_anomaly_windows(np.array(y_true))
+
+    sparsity = sum(y_true)/float(len(y_true))
+    label_windows = add_buffer_to_label(sparsity, label_windows, 0, len(y_true))
+
     detection_info = {}
     for window in label_windows:
         detection_info[window] = 0
